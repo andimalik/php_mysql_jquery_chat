@@ -1,0 +1,335 @@
+<html>
+<head>
+	<title>test</title>
+	<style type="text/css">
+		#container {
+			border: solid 1px #aaaaff;
+			display: block;
+			margin: 0px;
+			padding: 0px;
+			width: 798px;
+			height: 200px;
+			overflow: auto;
+		}
+		#content {
+			display: block;
+			border: none;
+			margin: 0px;
+			padding: 0px;
+			width: 100%;
+			min-height: 200px;
+		}
+		#name_input, #message_input {
+			padding:2px;
+			border: solid 1px #aaaaff
+		}
+		#name_input {
+			width: 200px;
+			height: 25px;
+		}
+		#message_input {
+			width: 500px;
+			height: 25px;
+		}
+		#send_button, #scroll_to_top, #scroll_to_bottom {
+			padding: 2px 6px 2px 6px;
+			border: solid 1px #aaaaff;
+			background-color: #dddddd;
+		}
+		#send_button {
+			width: 100px;
+			height: 25px;
+		}
+		#message_list {
+			display: block;
+			border: none;
+			margin: 0px;
+			padding: 0px;
+		}
+		.message_item {
+			padding: 5px;
+			vertical-align: top;
+		}
+		.message_item .sender_name {
+			display: inline-block;
+			margin: 0px;
+			padding: 0px;
+			width: 100px;
+			vertical-align: top;
+		}
+		.message_item .colon {
+			display: inline-block;
+			margin: 0px;
+			padding: 0px;
+			width: 20px;
+			vertical-align: top;
+			text-align: center;
+		}
+		.message_item .message {
+			display: inline-block;
+			margin: 0px;
+			padding: 0px;
+			width: 631;
+			vertical-align: top;
+		}
+		.message_item .message_times {
+			display: inline-block;
+			margin: 0px;
+			padding: 0px;
+			width: 751px;
+			text-align: right;
+			font-size: 8pt;
+		}
+		#message_list .message_item:nth-of-type(even) {
+			background-color: #efefff;
+		}
+		#message_list .message_item:nth-of-type(odd) {
+			background-color: #efffff;
+		}
+	</style>
+	<script type="text/javascript" src="jquery-1.10.2.min.js"></script>
+	<script type="text/javascript">
+		$('#chat_app').ready(function() {
+			// Scroll event handler.
+			$('#container').scroll(function() {
+				if ($('#container').scrollTop() <= 1) {
+					$('#notice').html('top');
+					load_older_messages($('#chat_app').data('msgordernumoldest'));
+				} else if($('#container').scrollTop() + $('#container').height() > $('#content').height() - 100) {
+					$('#notice').html('bottom');
+				} else {
+					$('#notice').html('');
+				}
+			});
+			
+			// Scroll to top.
+			scroll_to_top = function(){
+				$('#container').animate({ scrollTop: 0 - $('#content').height() }, 1000);
+			}
+			
+			$('#scroll_to_top').click(scroll_to_top);
+			
+			// Scroll to bottom.
+			scroll_to_bottom = function(){
+				$('#container').animate({ scrollTop: $('#content').height() }, 1000);
+			}
+			
+			$('#scroll_to_bottom').click(scroll_to_bottom);
+			
+			// Message submission function.
+			submit_message = function() {
+				$.ajax({
+					url: 'message_submission.php',
+					type: 'POST',
+					data: {
+						name: $('#name_input').val(),
+						message: $('#message_input').val()
+					},
+					error: function(jqXHR, textStatus, errorThrown) {
+						console.log(jqXHR);
+						console.log(textStatus);
+						console.log(errorThrown);
+						alert('Error submitting the new message.');
+					},
+					success: function(data, textStatus, jqXHR) {
+						load_newer_messages($('#chat_app').data('msgordernum'), true);
+						$('#message_input').val('');
+					},
+					complete: function() {
+						stop_recurring();
+						start_recurring();
+					}
+				});
+			}
+			
+			// Send button click event handler.
+			$('#send_button').click(submit_message);
+			
+			// Message submission on 'Enter' keypress event handler.
+			$('#message_input').keypress(function(event) {
+				var key = event.which;
+				
+				if (key == 13 && $('#send_on_enter').is(':checked')) {
+					submit_message();
+				}
+			});
+			
+			// Newer messages loader.
+			load_newer_messages = function(current_message_number, scroll) {
+				$.ajax({
+					url: 'latest_message_retrieval.php',
+					type: 'GET',
+					data: {
+						newer_than: current_message_number
+					},
+					error: function(jqXHR, textStatus, errorThrown) {
+						console.log(jqXHR);
+						console.log(textStatus);
+						console.log(errorThrown);
+						alert('Error loading newer messages.');
+					},
+					success: function(data, textStatus, jqXHR) {
+						$.each(data.messages, function(index, value){
+							var message_item_html = render_message_row(value);
+							
+							if ($('#message-' + value.message_id).length == 0) {
+								$('#message_list').append(message_item_html);
+							}
+						});
+						
+						$('#chat_app').data('msgordernum', data.greatest_message_order)
+						if (
+							data.least_message_order != null
+							&& (
+								parseInt($('#chat_app').data('msgordernumoldest')) > parseInt(data.least_message_order)
+								|| parseInt($('#chat_app').data('msgordernumoldest')) == 0
+							)
+						) {
+							$('#chat_app').data('msgordernumoldest', data.least_message_order);
+						}
+						
+						if (scroll && data.messages.length > 0) {
+							scroll_to_bottom();
+						}
+					}
+				});
+			}
+			
+			// Older messages loader.
+			load_older_messages = function(current_message_number) {
+				$.ajax({
+					url: 'older_message_retrieval.php',
+					type: 'GET',
+					data: {
+						older_than: current_message_number
+					},
+					error: function(jqXHR, textStatus, errorThrown) {
+						console.log(jqXHR);
+						console.log(textStatus);
+						console.log(errorThrown);
+						alert('Error loading newer messages.');
+					},
+					success: function(data, textStatus, jqXHR) {
+						$.each(data.messages.reverse(), function(index, value){
+							var message_item_html = render_message_row(value);
+							
+							if ($('#message-' + value.message_id).length == 0) {
+								$('#message_list').prepend(message_item_html);
+							}
+						});
+						
+						if (
+							data.least_message_order != null
+							&& (
+								parseInt($('#chat_app').data('msgordernumoldest')) > parseInt(data.least_message_order)
+								|| parseInt($('#chat_app').data('msgordernumoldest')) == 0
+							)
+						) {
+							$('#chat_app').data('msgordernumoldest', data.least_message_order);
+						}
+					}
+				});
+			}
+			
+			// Message row renderer.
+			render_message_row = function(message_data) {
+				var message_item_html = '<div id="message-' + message_data.message_id + '" class="message_item">'
+					+ '<div class="sender_name">' + message_data.sender_name + '</div>'
+					+ '<div class="colon">:</div>'
+					+ '<div class="message">' + message_data.message_text + '</div>'
+					+ '<div class="message_times">' + message_data.message_time + '</div>'
+					+ '</div>';
+				
+				return message_item_html;
+			}
+			
+			// Recurring messages load.			
+			recurring_message_load_handler = 0;
+			recurring_time = 5000;
+			
+			recurring_load = function() {
+				load_newer_messages($('#chat_app').data('msgordernum'), true);
+				start_recurring();
+			}
+			
+			start_recurring = function() {
+				if (!recurring_message_load_handler) {
+					recurring_message_load_handler = setTimeout(repeat_recurring, recurring_time);
+				}
+			}
+			
+			repeat_recurring = function() {
+				recurring_message_load_handler = 0;
+				recurring_load();
+			}
+			
+			stop_recurring = function() {
+				if (recurring_message_load_handler) {
+					clearTimeout(recurring_message_load_handler);
+					recurring_message_load_handler = 0;
+				}
+			}
+			
+			// Init messages.
+			load_newer_messages($('#chat_app').data('msgordernum'), true);
+			start_recurring();
+		});
+	</script>
+</head>
+<body>
+	<div id="chat_app" data-msgordernum="0" data-msgordernumoldest="0">
+		<div id="container">
+			<div id="content">
+				<div id="message_list">
+					<!--div class="message_item">
+						<div class="sender_name">Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo</div>
+						<div class="colon">:</div>
+						<div class="message">Hello, Web!</div>
+						<div class="message_times">2017-12-31 12:59:59</div>
+					</div>
+					<div class="message_item">
+						<div class="sender_name">Sudo</div>
+						<div class="colon">:</div>
+						<div class="message">Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web!</div>
+						<div class="message_times">2017-12-31 12:59:59</div>
+					</div>
+					<div class="message_item">
+						<div class="sender_name">Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo</div>
+						<div class="colon">:</div>
+						<div class="message">Hello, Web!</div>
+						<div class="message_times">2017-12-31 12:59:59</div>
+					</div>
+					<div class="message_item">
+						<div class="sender_name">Sudo</div>
+						<div class="colon">:</div>
+						<div class="message">Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web!</div>
+						<div class="message_times">2017-12-31 12:59:59</div>
+					</div>
+					<div class="message_item">
+						<div class="sender_name">Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo Sudo</div>
+						<div class="colon">:</div>
+						<div class="message">Hello, Web!</div>
+						<div class="message_times">2017-12-31 12:59:59</div>
+					</div>
+					<div class="message_item">
+						<div class="sender_name">Sudo</div>
+						<div class="colon">:</div>
+						<div class="message">Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web! Hello, Web!</div>
+						<div class="message_times">2017-12-31 12:59:59</div>
+					</div-->
+				</div>
+			</div>
+		</div>
+		<div>
+			<input type="text" id="name_input" placeholder="type name here..."
+			/><input type="text" id="message_input" placeholder="type message here..."
+			/><button type="button" id="send_button">Send</button><input type="checkbox" checked id="send_on_enter" /><label for="send_on_enter">Send on 'Enter'</label>
+		</div>
+		<div>
+			<button type="button" id="scroll_to_top">Scroll to Top</button>
+			<button type="button" id="scroll_to_bottom">Scroll to Bottom</button>
+		</div>
+		<div id="notice"></div>
+	</div>
+</body>
+</html>
